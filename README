@@ -1,0 +1,164 @@
+# FinSignal: From-Scratch RNN/LSTM Financial Forecasting Pipeline
+
+> End-to-end ML pipeline implementing Vanilla RNN and LSTM **from scratch using NumPy**,  
+> trained via BFGS optimisation — no deep learning frameworks required.
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-from--scratch-orange)](https://numpy.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+---
+
+## Overview
+
+FinSignal demonstrates **deep understanding of sequence model internals** by implementing
+both RNN and LSTM architectures without TensorFlow or PyTorch.
+
+Most ML projects call `keras.LSTM(64)` in three lines. Here, every gate equation —
+Input Gate, Forget Gate, Output Gate, Cell State — is an explicit NumPy matrix operation,
+and all parameters are estimated by minimising RMSE via **BFGS** (`scipy.optimize`).
+
+The project is structured as a production-style **3-stage ETL pipeline**:
+
+```
+[yfinance API] ──► [Feature Engineering] ──► [MinMaxScaler] ──► [RNN / LSTM] ──► [Evaluation]
+    Ingest               Transform               Normalize          Model          RMSE + IC
+```
+
+---
+
+## Project Structure
+
+```
+FinSignal/
+├── src/
+│   ├── data_pipeline.py   # ETL: Ingest → Transform → Load
+│   ├── rnn_model.py       # Vanilla RNN from scratch (NumPy + BFGS)
+│   ├── lstm_model.py      # LSTM from scratch (NumPy + BFGS)
+│   └── evaluate.py        # RMSE, IC (Spearman), prediction plots
+├── results/
+│   └── AAPL_prediction_plot.png
+├── train.py               # Main entry point
+└── requirements.txt
+```
+
+---
+
+## Pipeline Architecture
+
+### Stage 1 — Ingest
+- Downloads OHLCV data via `yfinance` API for any ticker
+- Validates completeness; raises informative errors on failure
+- Structured logging at every step for observability
+
+### Stage 2 — Transform (Feature Engineering)
+
+| Feature | Description |
+|---|---|
+| `Close` | Raw closing price |
+| `Volume` | Trading volume |
+| `MA_5` | 5-day moving average |
+| `MA_20` | 20-day moving average |
+| `Volatility` | 20-day rolling standard deviation |
+| `Target` | Next-day Close price (prediction target, shifted by -1) |
+
+All features normalised with `MinMaxScaler` to range [0, 1].
+
+### Stage 3 — Load
+- 80/20 train/test split
+- Data passed as `pd.DataFrame` rows (1 × M row-vector convention)
+
+---
+
+## Models — Implemented From Scratch
+
+### Vanilla RNN
+```
+h(t) = tanh( x(t) @ U  +  h(t-1) @ W  +  b )
+y(t) = h(t) @ V  +  c
+```
+Parameters estimated by minimising **MSE** via BFGS.
+
+### LSTM (Long Short-Term Memory)
+```
+i(t) = sigmoid( x(t)@U_i + h(t-1)@W_i + b_i )   # input gate
+f(t) = sigmoid( x(t)@U_f + h(t-1)@W_f + b_f )   # forget gate
+o(t) = sigmoid( x(t)@U_o + h(t-1)@W_o + b_o )   # output gate
+g(t) = tanh(    x(t)@U_g + h(t-1)@W_g          ) # cell input
+c(t) = f(t) * c(t-1) + i(t) * g(t)               # cell state
+h(t) = o(t) * tanh(c(t))                          # hidden state
+y(t) = h(t) @ V + b_y                             # prediction
+```
+Parameters estimated by minimising **RMSE** via BFGS.
+
+---
+
+## Results (AAPL, 2020–2024, Test Set)
+
+| Model | RMSE | IC (Spearman) |
+|---|---|---|
+| Vanilla RNN | 0.3456 | 0.4648 |
+| From-Scratch LSTM | 0.3475 | **0.9429** |
+
+**Key insight:** LSTM's IC = 0.94 indicates the model captures the directional
+trend of price movements with high rank correlation, even though absolute
+RMSE is similar to RNN. This is explained by the forget gate's ability to
+selectively retain long-term trend signals while discarding short-term noise —
+exactly the architectural advantage LSTM has over vanilla RNN.
+
+![Prediction Plot](results/AAPL_prediction_plot.png)
+
+---
+
+## How to Run
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run full pipeline (AAPL, 2020–2024)
+python train.py
+
+# Different ticker
+python train.py --ticker TSLA
+
+# Quick smoke-test (RNN only)
+python train.py --ticker META --tol 1e-1 --no-lstm
+```
+
+---
+
+## Tech Stack
+
+| Layer | Tools |
+|---|---|
+| Data Ingestion | `yfinance`, `pandas` |
+| Feature Engineering | `pandas`, `numpy` |
+| Normalisation | `scikit-learn` (MinMaxScaler) |
+| Model Implementation | `numpy` (from scratch) |
+| Parameter Optimisation | `scipy.optimize.minimize` (BFGS) |
+| Evaluation | RMSE, Spearman IC (`scipy.stats`) |
+| Visualisation | `matplotlib` |
+
+---
+
+## Why From Scratch?
+
+This project was built as an extension of graduate coursework in
+**NEU INFO6105 (Data Science Engineering)**, which covered RNN/LSTM
+architecture, gate mechanics, and BFGS-based parameter estimation
+from first principles.
+
+Implementing models without frameworks forces explicit understanding of:
+- Matrix dimension conventions (Mx1 vs 1xM)
+- Gate interactions in the forward pass
+- Why BFGS converges faster than gradient descent for small-scale problems
+- The difference between RMSE loss (regression) and IC (rank correlation)
+
+---
+
+## Author
+
+**Yingying Zhuang**  
+MS Information Systems, Northeastern University  
+[LinkedIn](https://linkedin.com/in/zhuangyingying) · [GitHub](https://github.com/YingyingZhuang)
